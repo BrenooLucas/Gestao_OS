@@ -234,116 +234,7 @@ def gerar_pdf_relatorio(janela):
                              "O local de destino não foi encontrado. Verifique se a pasta ainda existe.",
                              parent=janela)
 
-    except OSError as e:
-        if e.errno == errno.EACCES:
-            messagebox.showerror("Acesso Negado",
-                                 "Permissão negada. Verifique as permissões da pasta ou se o arquivo está em uso.",
-                                 parent=janela)
-        elif e.errno == errno.ENOSPC:
-            messagebox.showerror("Sem Espaço",
-                                 "Sem espaço suficiente em disco. Libere espaço e tente novamente.",
-                                 parent=janela)
-        elif e.errno == errno.ENAMETOOLONG:
-            messagebox.showerror("Nome Muito Longo",
-                                 "O nome do arquivo é muito longo. Use um nome mais curto ou salve em outro local.",
-                                 parent=janela)
-        else:
-            messagebox.showerror("Erro do Sistema",
-                                 f"Ocorreu um erro ao salvar o PDF: {e.strerror}",
-                                 parent=janela)
-
-    except ValueError as e:
-        messagebox.showerror("Erro de Dados",
-                             f"Dados inválidos ao montar o PDF:\n{e}",
-                             parent=janela)
-
-    except Exception as e:
-        messagebox.showerror("Erro Desconhecido",
-                             f"Ocorreu um erro inesperado ao gerar o PDF:\n{e}",
-                             parent=janela)
-
-def inserir_ordem(nome_profissional, nome_cliente, servico, valor, detalhes, peca_substituida, numero_ordem):
-    campos = {
-        "Nome do Profissional": nome_profissional,
-        "Nome do Cliente": nome_cliente,
-        "Serviço": servico,
-        "Número da Ordem": numero_ordem,
-        "Valor": valor,
-        "Detalhes": detalhes,
-        "Peça Trocada": peca_substituida
-    }
-
-    # Verifica se todos os campos estão vazios (None ou string em branco)
-    if all((v is None or str(v).strip() == "") for v in campos.values()):
-        messagebox.showwarning("Aviso", "Todos os campos estão vazios. Por favor, preencha-os!")
-        return
-
-    # Verifica se algum campo individual está vazio
-    for nome_campo, valor_campo in campos.items():
-        if valor_campo is None or str(valor_campo).strip() == "":
-            messagebox.showwarning("Aviso", f"Preencha o campo: {nome_campo}")
-            return
-
-    # Validação do valor numérico
-    try:
-        valor = float(valor)
-        if valor < 0:
-            raise ValueError
-    except ValueError:
-        messagebox.showerror("Erro", "Valor deve ser um número positivo.")
-        return
-
-    # Inserção no banco
-    try:
-        with sqlite3.connect(DB_NAME, timeout=10) as conn:
-            c = conn.cursor()
-            c.execute('''
-                INSERT INTO ordens (
-                    nome_profissional, nome_cliente, servico, valor, detalhes,
-                    peca_substituida, numero_ordem, status, data_finalizacao
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDENTE', NULL)
-            ''', (nome_profissional, nome_cliente, servico, valor, detalhes, peca_substituida, numero_ordem))
-
-        for entry in entries:
-            entry.delete(0, tk.END)
-
-        carregar_ordens(entry_busca.get())
-        messagebox.showinfo("Sucesso", f"Ordem Nº {numero_ordem} adicionada.")
-
-    except sqlite3.IntegrityError:
-        messagebox.showerror("Erro", f"Já existe uma ordem com o número {numero_ordem}.")
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            messagebox.showerror("Erro", "Banco de dados está bloqueado. Tente novamente.")
-        else:
-            messagebox.showerror("Erro", f"Erro operacional: {str(e)}")
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao inserir no banco: {str(e)}")
-def carregar_ordens(filtro=""):
-    # Limpa as linhas atuais da treeview
-    for row in tree.get_children():
-        tree.delete(row)
-
-    with sqlite3.connect(DB_NAME) as conn:
-        c = conn.cursor()
-        if filtro:
-            c.execute("SELECT * FROM ordens WHERE nome_cliente LIKE ? OR numero_ordem LIKE ?",
-                      (f"{filtro}%", f"{filtro}%"))
-        else:
-            c.execute("SELECT * FROM ordens")
-
-        resultados = c.fetchall()
-
-        # Mostrar mensagem só se o filtro NÃO estiver vazio
-        if filtro:
-            if not resultados:
-                label_aviso_busca.config(text="Nenhuma O.S ou cliente encontrada(s).", fg="#FF0000")  # vermelho
-            else:
-                label_aviso_busca.config(text="Registro(s) encontrado(s).", fg="#008000")  # verde
-        else:
-            # Se filtro vazio, limpa mensagem (não mostra nada)
-            label_aviso_busca.config(text="")
+    
 
         for row in resultados:
             id_, prof, cliente, servico, valor, detalhes, peca, numero, status, data = row
@@ -463,80 +354,7 @@ def gerar_pdf():
         alignment=1  # CENTER
     )
 
-    titulo = Paragraph("Ordens de Serviço Finalizadas", estilos['Title'])
-    elementos.append(titulo)
-    elementos.append(Spacer(1, 12))
-
-    # Cabeçalho da tabela
-    dados = [[
-        Paragraph("✔", estilo_celula_centralizado),
-        Paragraph("Nº OS", estilo_celula_centralizado),
-        Paragraph("Cliente", estilo_celula_centralizado),
-        Paragraph("Serviço", estilo_celula_centralizado),
-        Paragraph("Valor (R$)", estilo_celula_centralizado),
-        Paragraph("Profissional", estilo_celula_centralizado),
-        Paragraph("Peça Trocada", estilo_celula_centralizado),
-        Paragraph("Detalhes", estilo_celula_centralizado),
-        Paragraph("Finalizado em", estilo_celula_centralizado),
-    ]]
-
-    for ordem in ordens:
-        _, prof, cliente, servico, valor, detalhes, peca, numero, _, data_final = ordem
-        data_final = data_final if data_final else "-"
-
-        dados.append([
-            Paragraph("✔", estilo_celula_centralizado),
-            Paragraph(str(numero), estilo_celula_centralizado),  # Nº OS centralizado
-            Paragraph(cliente, estilo_celula_centralizado),
-            Paragraph(servico, estilo_celula_centralizado),
-            Paragraph(f"{valor:.2f}", estilo_celula_centralizado),  # Valor centralizado
-            Paragraph(prof, estilo_celula_centralizado),
-            Paragraph(peca or "-", estilo_celula_centralizado),
-            Paragraph(detalhes or "-", estilo_celula_centralizado),
-            Paragraph(data_final, estilo_celula_centralizado),
-        ])
-
-    tabela = Table(dados, repeatRows=1, hAlign='LEFT')
-
-    tabela.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 2),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-    ]))
-
-    elementos.append(tabela)
-
-    try:
-        doc.build(elementos)
-        messagebox.showinfo("PDF Gerado", f"PDF gerado com sucesso em:\n{file_path}")
-
-    except PermissionError:
-        messagebox.showerror("Permissão Negada",
-                             "Permissão negada. Feche o arquivo se ele estiver aberto ou escolha outro local.")
-    except FileNotFoundError:
-        messagebox.showerror("Erro de Caminho", "O caminho do arquivo não foi encontrado. Tente novamente.")
-    except IOError as e:
-        if e.errno == errno.ENOSPC:
-            messagebox.showerror("Erro de Espaço", "Sem espaço em disco para salvar o arquivo.")
-        else:
-            messagebox.showerror("Erro de Escrita", f"Erro ao salvar o arquivo:\n{e}")
-    except Exception as e:
-        messagebox.showerror("Erro Desconhecido", f"Ocorreu um erro inesperado ao gerar o PDF:\n{str(e)}")
-
-def editar_ordem_existente():
-    item = tree.selection()
-    if not item:
-        messagebox.showwarning("Aviso", "Selecione uma ordem para editar.")
-        return
-
-    item_id = item[0]
-    valores = tree.item(item_id)['values']
-    numero_ordem = valores[1]
+    
 
     ############Criar nova janela de edição###########
 
@@ -1035,3 +853,4 @@ btn_sair.grid(row=0, column=3, padx=5)
 init_db()
 carregar_ordens()
 root.mainloop()
+
